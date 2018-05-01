@@ -33,13 +33,13 @@ def read_file(fn):
 		line = line.strip()
 		if line and not line.startswith('#'):
 			ele = line.split()
-			print(ele[0])
 			rest = ele[2:]
 			for r in rest:
 				arr = r.split('/')[0]
 				run = r.split('/')[1]
 				p = Process(ele[0],ele[1],arr,run)
 				q.put(p)
+	f.close()
 	return q
 
 def print_memory(m):
@@ -88,6 +88,27 @@ def find_loc_worst_fit(p,m):
 			return tmp[1]
 	return -1
 
+def find_loc_best_fit(p,m):
+	idx = 0
+	q = queue.PriorityQueue()
+	i = 0
+	while i<len(m):
+		if m[i] == '.':
+			for j in range(i,len(m)):
+				if m[j]!='.':
+					q.put([j - i, i])
+					i = j
+					break
+				if j == len(m) - 1:
+					q.put([j + 1 - i,i])
+					i = j
+		i += 1
+	while not q.empty():
+		tmp = q.get()
+		if p.mem <= tmp[0]:
+			return tmp[1]
+	return -1
+
 def place(idx,p,m):
 	for i in range(idx,idx+p.mem):
 		m[i] = p.pid
@@ -128,8 +149,6 @@ def defragmentation(m):
 	movedlist = []
 	start = find_start(0,m)
 	end = find_end(start,m)
-	print("start: %d"%start)
-	print("end: %d"%end)
 	while end<len(m):
 		if end>start and m[end]!='.':
 			if m[end] not in movedlist:
@@ -142,6 +161,59 @@ def defragmentation(m):
 		end+=1
 	return defrag_time,moved,movedlist
 
+
+
+def best_fit(q,m):
+	time = 0
+	after_time = 0 # time after adding defrag
+	print_event(time,6,alg="Contiguous -- Best-Fit")
+	leave_q = queue.PriorityQueue()
+	m = list(m) # generate a copy
+	while not q.empty() or not leave_q.empty():
+		if not leave_q.empty():
+			temp = leave_q.get()
+			if temp[0]==time:
+				m = unplace(temp[1],m)
+				print_event(after_time,3,p=Process(temp[1],0,0,0))
+				print_memory(m)
+				continue
+			else:
+				leave_q.put(temp)
+		if not q.empty():
+			current = q.get()
+			if current.arr_time==time:
+				print_event(after_time,0,p=current)
+				idx = find_loc_best_fit(current,m)
+				if idx!=-1:
+					m = place(idx,current,m)
+					print_event(after_time,1,p=current)
+					print_memory(m)
+					leave_q.put([current.leave_time,current.pid])
+				else:
+					if cal_remain(m) >= current.mem:
+						print_event(after_time,4,p=current)
+						defrag_time,moved,movedlist = defragmentation(m)
+						after_time += defrag_time
+						print_event(after_time,5,moved=moved,movedlist=movedlist)
+						print_memory(m)
+						idx = find_loc_best_fit(current,m)
+						m = place(idx,current,m)
+						print_event(after_time,1,p=current)
+						print_memory(m)
+						leave_q.put([current.leave_time,current.pid])
+					else:
+						print_event(after_time,2,p=current)
+				if not q.empty():
+					p = q.get()
+					q.put(p)
+					if p.arr_time==time:
+						continue
+			else:
+				q.put(current)
+		time+=1
+		after_time+=1
+	print_event(after_time,7,alg="Contiguous -- Best-Fit")
+	print()
 
 
 def worst_fit(q,m):
@@ -204,12 +276,15 @@ def print_table(md):
     print("PAGE TABLE [page,frame]:")
     for pid in md:
         page = 0
-        print(pid+': ',end='')
+        print(pid+':',end='')
         pages = range(len(md[pid]))
         i = 0
         for p,f in zip(pages,md[pid]):
             i+=1
-            print("[%d,%d]"%(p,f),end=' ')
+            if i%10==1 and i!=1:
+            	print("[%d,%d]"%(p,f),end='')
+            else:
+            	print(" [%d,%d]"%(p,f),end='')
             if i%10==0:
                 print()
         print()
@@ -283,9 +358,12 @@ def main(argv):
 		memory.append('.')
 	#read file
 	fn = argv[1]
+	q0 = read_file(fn)
+	best_fit(q0,memory)
 	q = read_file(fn)
-	#worst_fit(q,memory)
-	non_contiguous(q,memory)
+	worst_fit(q,memory)
+	q1 = read_file(fn)
+	non_contiguous(q1,memory)
 
 	# while not q.empty():
 	# 	item = q.get()
