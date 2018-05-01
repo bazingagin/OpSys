@@ -1,5 +1,6 @@
 import sys
 import queue
+from collections import OrderedDict
 
 class Process:
 	def __init__(self,pid,mem,arr_time,run_time):
@@ -127,8 +128,10 @@ def defragmentation(m):
 	movedlist = []
 	start = find_start(0,m)
 	end = find_end(start,m)
+	print("start: %d"%start)
+	print("end: %d"%end)
 	while end<len(m):
-		if end>0 and start>0 and m[end]!='.' and end>start:
+		if end>start and m[end]!='.':
 			if m[end] not in movedlist:
 				movedlist.append(m[end])
 			m[start] = m[end]
@@ -196,8 +199,80 @@ def worst_fit(q,m):
 	print_event(after_time,7,alg="Contiguous -- Worst-Fit")
 	print()
 
+def print_table(md):
+    md = OrderedDict(sorted(md.items()))
+    print("PAGE TABLE [page,frame]:")
+    for pid in md:
+        page = 0
+        print(pid+': ',end='')
+        pages = range(len(md[pid]))
+        i = 0
+        for p,f in zip(pages,md[pid]):
+            i+=1
+            print("[%d,%d]"%(p,f),end=' ')
+            if i%10==0:
+                print()
+        print()
 
-# def non_contiguous()
+def fill_memory(l,p,m):
+	for i in l:
+		m[i] = p.pid
+	return m
+
+def unfill_memory(l,m):
+	for i in l:
+		m[i] = '.'
+	return m
+
+def non_contiguous(q,m1):
+	m = list(m1)
+	time = 0
+	table = {}
+	leave_q = queue.PriorityQueue()
+	remain_memory = len(m)
+	print_event(time,6,alg="Non-contiguous")
+	while not q.empty() or not leave_q.empty():
+		if not leave_q.empty():
+			temp = leave_q.get()
+			if temp[0]==time:
+				m = unfill_memory(table[temp[1]],m)
+				remain_memory+=len(table[temp[1]])
+				del table[temp[1]]
+				print_event(time,3,p=Process(temp[1],0,0,0))
+				print_memory(m)
+				print_table(table)
+				continue
+			else:
+				leave_q.put(temp)
+		if not q.empty():
+			#for i in range(q.qsize()):
+			current = q.get()
+			if current.arr_time==time:
+				print_event(time,0,p=current)
+				if remain_memory<current.mem:
+					print_event(time,2,p=current)
+				else:
+					if table=={}:
+						table[current.pid] = range(current.mem)
+						m = place(0,current,m)
+					else:
+						table[current.pid] = [emp for emp in range(len(m)) if m[emp]=='.'][:current.mem]
+						m = fill_memory(table[current.pid],current,m)
+					remain_memory-=current.mem
+					print_event(time,1,p=current)
+					print_memory(m)
+					print_table(table)
+					leave_q.put([current.leave_time,current.pid])
+				if not q.empty():
+					p = q.get()
+					q.put(p)
+					if p.arr_time==time:
+						continue
+			else:
+				q.put(current)
+		time+=1
+	print_event(time,7,alg="Non-contiguous")
+
 
 def main(argv):
 	if len(argv)!=2:
@@ -209,12 +284,12 @@ def main(argv):
 	#read file
 	fn = argv[1]
 	q = read_file(fn)
-	worst_fit(q,memory)
+	#worst_fit(q,memory)
+	non_contiguous(q,memory)
 
-
-	while not q.empty():
-		item = q.get()
-		print(item)
+	# while not q.empty():
+	# 	item = q.get()
+	# 	print(item)
 
 
 
