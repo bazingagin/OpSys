@@ -1,5 +1,6 @@
 import sys
 import queue
+import os
 from collections import OrderedDict
 
 class Process:
@@ -24,6 +25,17 @@ class Process:
 	def __repr__(self):
 		return '%s: %d %d %d'%(self.pid,self.mem,self.arr_time,self.leave_time)
 
+class Process1:
+	def __init__(self, id, size, arrival):
+		self.id = str(id)
+		self.size = int(size)
+		self.times = len(arrival)
+		self.arrival = [0] * len(arrival)
+		self.depart = [0] * len(arrival)
+		for i in range(len(arrival)):
+			pair = arrival[i].split('/')
+			self.arrival[i] = int(pair[0])
+			self.depart[i] = int(pair[0]) + int(pair[1])
 
 def read_file(fn):
 	q = queue.PriorityQueue()
@@ -41,6 +53,14 @@ def read_file(fn):
 				q.put(p)
 	f.close()
 	return q
+
+def printmem(mem):
+	print("================================")
+	for i in range(0, 8):
+		for j in range(0, 32):
+			print(mem[i * 32 + j], end = '')
+		print()
+	print("================================")
 
 def print_memory(m):
 	print('='*32)
@@ -67,6 +87,126 @@ def print_event(time,etype,p=None,moved=None,movedlist=None,alg=None):
         print("time %dms: Simulator started (%s)" % (time,alg))
     elif etype == 7:
         print("time %dms: Simulator ended (%s)" % (time,alg))
+
+def room(mem):
+	count = 0
+	for i in range(256):
+		if(mem[i] == '.'):
+			count += 1
+	return count
+
+def add(mem, p, pos):
+	i = 0
+	while i < p.size:
+		mem[pos + i] = p.id
+		i += 1
+
+def remove(mem, p):
+	for i in range(256):
+		if(mem[i] == p.id):
+			mem[i] = '.'
+
+def search_first_place(mem, p, pos):
+	i = find_start(pos, mem)
+	j = i
+	while j < 256:
+		if(mem[j] != '.'):
+			break
+		j += 1
+	if j - i >= p.size:
+		pos = i
+	else:
+		pass
+	return pos
+
+def find_next_free(mem, p, idx=0):
+	mem_idx = -1
+	unalloc_space = 0
+	for i in range(256):
+		check_index = (i + idx) % 256
+		unalloc_space = get_unalloc_mem_size(mem, check_index)
+		if p.size <= unalloc_space:
+			mem_idx = check_index
+			break
+	return mem_idx, unalloc_space
+
+def get_unalloc_mem_size(mem, idx=0):
+	'''
+	get size of free memory from index onward
+	:param idx: index in memory
+	:param memory: character array memory
+	:return: size of free frame after idx
+	'''
+	len_unalloc = 0
+	for i in range(idx, len(mem)):
+		if mem[i] != '.':
+			return len_unalloc
+		len_unalloc += 1
+	return len_unalloc
+
+def next_fit(mem, plist):
+	mem = list(mem)
+	t = 0
+	print("time " + str(t) + "ms: Simulator started (Contiguous -- Next-Fit)")
+	done = 0
+	count =0
+	queue = []
+	for p in plist:
+		count += p.times
+	pos = 0
+	while done < count:
+		for p in plist:
+			for time in p.depart:
+				if t == time and p.id in queue:
+					remove(mem, p)
+					done += 1
+					queue.remove(p.id)
+					print("time " + str(t) + "ms: Process " + p.id + " removed:")
+					printmem(mem)
+		for p in plist:
+			for time in p.arrival:
+				if t == time:
+					print("time " + str(t) + "ms: Process " + p.id + " arrived (requires " + str(p.size) + " frames)")
+					if(room(mem) < p.size):
+						print("time "+ str(t) + "ms: Cannot place process " + p.id + " -- skipped!")
+						done += 1
+					else:
+						pos = find_next_free(mem, p, pos)[0]
+						if(pos == -1):
+							print("time " + str(t) + "ms: Cannot place process " + p.id + " -- starting defragmentation")
+							defrag_time, moved, movedlist = defragmentation(mem)
+							update_time(plist, t, defrag_time)
+							t += defrag_time
+							print("time " + str(t) + "ms: Defragmentation complete (moved " + str(moved) + " frames: " + print_movedlist(movedlist) + ")")
+							printmem(mem)
+							pos = find_next_free(mem, p, pos)[0]
+						queue.append(p.id)
+						add(mem, p, pos)
+						print("time " + str(t) + "ms: Placed process " + p.id + ":")
+						pos += p.size
+						if(pos >= 256):
+							pos -= 256
+						printmem(mem)
+		t += 1
+	print("time " + str(t - 1) + "ms: Simulator ended (Contiguous -- Next-Fit)\n")
+
+def update_time(plist, t, defrag_time):
+	for p in plist:
+		for i in range(len(p.arrival)):
+			if p.arrival[i] >= t:
+				p.arrival[i] += defrag_time
+				p.depart[i] += defrag_time
+			elif p.depart[i] >= t:
+				p.depart[i] += defrag_time
+			else:
+				continue
+
+def print_movedlist(movedlist):
+	string = ""
+	for i in movedlist:
+		string += i + ", "
+	string = string[:-2]
+	return string
 
 def find_loc_worst_fit(p,m):
 	idx = 0
@@ -160,8 +300,6 @@ def defragmentation(m):
 			moved+=1
 		end+=1
 	return defrag_time,moved,movedlist
-
-
 
 def best_fit(q,m):
 	time = 0
@@ -358,6 +496,26 @@ def main(argv):
 		memory.append('.')
 	#read file
 	fn = argv[1]
+	plist = []
+	input_file = os.getcwd()+'/'+sys.argv[1]
+	try:
+		f = open(input_file, 'r')
+		for line in f:
+			line = line.strip()
+			if line and not line.startswith('#'):
+				ele = line.split(' ')
+				id = ele[0]
+				size = ele[1]
+				arrival = ele[2:]
+				p = Process1(id, size, arrival)
+				plist.append(p)
+		f.close()
+	except ValueError as e:
+		sys.exit("ERROR: Invalid input file format")
+	mem = []
+	for i in range(256):
+		mem.append('.')
+	next_fit(mem, plist)
 	q0 = read_file(fn)
 	best_fit(q0,memory)
 	q = read_file(fn)
