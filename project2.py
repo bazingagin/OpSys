@@ -1,3 +1,7 @@
+'''
+Zhiying Jiang, jiangz6
+Tianyi Zhang, zhangt17
+'''
 import sys
 import queue
 import os
@@ -106,43 +110,22 @@ def remove(mem, p):
 		if(mem[i] == p.id):
 			mem[i] = '.'
 
-def search_first_place(mem, p, pos):
-	i = find_start(pos, mem)
-	j = i
-	while j < 256:
-		if(mem[j] != '.'):
-			break
-		j += 1
-	if j - i >= p.size:
-		pos = i
-	else:
-		pass
-	return pos
-
-def find_next_free(mem, p, idx=0):
-	mem_idx = -1
-	unalloc_space = 0
+def search_first_place(mem, p, index=0):
+	pos = -1
+	unalloc = 0
 	for i in range(256):
-		check_index = (i + idx) % 256
-		unalloc_space = get_unalloc_mem_size(mem, check_index)
-		if p.size <= unalloc_space:
-			mem_idx = check_index
+		check = (i + index) % 256
+		s = 0
+		for i in range(check, len(mem)):
+			if mem[i] != '.':
+				break
+			else:
+				s += 1
+		unalloc = s
+		if p.size <= unalloc:
+			pos = check
 			break
-	return mem_idx, unalloc_space
-
-def get_unalloc_mem_size(mem, idx=0):
-	'''
-	get size of free memory from index onward
-	:param idx: index in memory
-	:param memory: character array memory
-	:return: size of free frame after idx
-	'''
-	len_unalloc = 0
-	for i in range(idx, len(mem)):
-		if mem[i] != '.':
-			return len_unalloc
-		len_unalloc += 1
-	return len_unalloc
+	return pos
 
 def next_fit(mem, plist):
 	mem = list(mem)
@@ -171,7 +154,7 @@ def next_fit(mem, plist):
 						print("time "+ str(t) + "ms: Cannot place process " + p.id + " -- skipped!")
 						done += 1
 					else:
-						pos = find_next_free(mem, p, pos)[0]
+						pos = search_first_place(mem, p, pos)
 						if(pos == -1):
 							print("time " + str(t) + "ms: Cannot place process " + p.id + " -- starting defragmentation")
 							defrag_time, moved, movedlist = defragmentation(mem)
@@ -179,7 +162,7 @@ def next_fit(mem, plist):
 							t += defrag_time
 							print("time " + str(t) + "ms: Defragmentation complete (moved " + str(moved) + " frames: " + print_movedlist(movedlist) + ")")
 							printmem(mem)
-							pos = find_next_free(mem, p, pos)[0]
+							pos = search_first_place(mem, p, pos)
 						queue.append(p.id)
 						add(mem, p, pos)
 						print("time " + str(t) + "ms: Placed process " + p.id + ":")
