@@ -1,2 +1,2 @@
 # OpSys
-* memory simulation
+* group project of memory simulation with no group work 😂
